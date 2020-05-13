@@ -11,9 +11,9 @@ import time
 from glob import glob
 cwd = os.path.dirname(os.path.realpath(__file__))
 
-# Tensorflow visualization_unitls
-from object_detection.utils import label_map_util
-from object_detection.utils import visualization_utils as vis_util
+
+import core.utils as utils
+
 
 class CarDetector(object):
     def __init__(self):
@@ -22,44 +22,20 @@ class CarDetector(object):
 
         os.chdir(cwd)
 
-        #Tensorflow localization/detection model
-        # Single-shot-dectection with mobile net architecture
-
-        #detect_model_name = 'ssd_mobilenet_v1_coco_11_06_2017'
-        #detect_model_name = 'ssd_resnet50_v1_fpn_shared_box_predictor_640x640_coco14_sync_2018_07_03'
-        detect_model_name = 'ssd_mobilenet_v2_bdd100k'
-
-        PATH_TO_CKPT = detect_model_name + '/frozen_inference_graph.pb'
-
-        # setup tensorflow graph
+        self.return_elements = ["input/input_data:0", "pred_sbbox/concat_2:0", "pred_mbbox/concat_2:0",
+                           "pred_lbbox/concat_2:0"]
+        self.pb_file = "./yolov3/frozen_inference_graph.pb"
+        self.num_classes = 80
+        self.input_size = 416
         self.detection_graph = tf.Graph()
 
         # configuration for possible GPU use
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
-        # load frozen tensorflow detection model and initialize
-        # the tensorflow graph
-        with self.detection_graph.as_default():
-            od_graph_def = tf.GraphDef()
-            with tf.gfile.GFile(PATH_TO_CKPT, 'rb') as fid:
-               serialized_graph = fid.read()
-               od_graph_def.ParseFromString(serialized_graph)
-               tf.import_graph_def(od_graph_def, name='')
 
-####################################################
-#            for op in self.detection_graph.get_operations():
-#                print(op.name)
-####################################################
+        self.sess = tf.Session(graph=self.detection_graph, config=config)
+        self.return_tensors = utils.read_pb_return_tensors(self.detection_graph, self.pb_file, self.return_elements)
 
-            self.sess = tf.Session(graph=self.detection_graph, config=config)
-            self.image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
-              # Each box represents a part of the image where a particular object was detected.
-            self.boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
-              # Each score represent how level of confidence for each of the objects.
-              # Score is shown on the result image, together with the class label.
-            self.scores =self.detection_graph.get_tensor_by_name('detection_scores:0')
-            self.classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
-            self.num_detections =self.detection_graph.get_tensor_by_name('num_detections:0')
 
     # Helper function to convert image into numpy array
     def load_image_into_numpy_array(self, image):
@@ -84,65 +60,77 @@ class CarDetector(object):
             list of bounding boxes: coordinates [y_up, x_left, y_down, x_right]
 
         """
-        #PATH_TO_LABELS = './mscoco_label_map.pbtxt'
-        PATH_TO_LABELS = './bdd_label_map.pbtxt'
 
-        # LOADING LABEL MAP
-        category_index = label_map_util.create_category_index_from_labelmap(PATH_TO_LABELS, use_display_name=True)
+        original_image_size = image.shape[:2]
+        image_data = utils.image_preporcess(np.copy(image), [self.input_size, self.input_size])
+        image_data = image_data[np.newaxis, ...]
 
-        with self.detection_graph.as_default():
-              image_expanded = np.expand_dims(image, axis=0)
-              (boxes, scores, classes, num_detections) = self.sess.run(
-                  [self.boxes, self.scores, self.classes, self.num_detections],
-                  feed_dict={self.image_tensor: image_expanded})
+        pred_sbbox, pred_mbbox, pred_lbbox = self.sess.run(
+                [self.return_tensors[1], self.return_tensors[2], self.return_tensors[3]],
+                feed_dict={self.return_tensors[0]: image_data})
 
-              if visual == True:
-                  vis_util.visualize_boxes_and_labels_on_image_array(
-                      image,
-                      np.squeeze(boxes),
-                      np.squeeze(classes).astype(np.int32),
-                      np.squeeze(scores),
-                      category_index,
-                      use_normalized_coordinates=True,min_score_thresh=.4,
-                      line_thickness=3)
+        pred_bbox = np.concatenate([np.reshape(pred_sbbox, (-1, 5 + self.num_classes)),
+                    np.reshape(pred_mbbox, (-1, 5 + self.num_classes)),
+                    np.reshape(pred_lbbox, (-1, 5 + self.num_classes))], axis=0)
 
-                  plt.figure(figsize=(9,6))
-                  plt.imshow(image)
-                  plt.show()
+        bboxes, tboxes, classes, scores = utils.postprocess_boxes(pred_bbox, original_image_size, self.input_size, 0.3)
+        bboxes = utils.nms(bboxes, 0.45, method='nms')
 
-              boxes= np.squeeze(boxes)
-              classes = np.squeeze(classes)
-              scores = np.squeeze(scores)
-
-              cls = classes.tolist()
-
-              # Filter low confidence objects
-              idx_vec = [i for i, v in enumerate(cls) if (scores[i]>0.3)]
-
-              if len(idx_vec) ==0:
-                  print('no detection!')
-                  self.car_boxes = []
-              else:
-                  tmp_car_boxes=[]
-                  for idx in idx_vec:
-                      dim = image.shape[0:2]
-                      box = self.box_normal_to_pixel(boxes[idx], dim)
-                      box_h = box[2] - box[0]
-                      box_w = box[3] - box[1]
-                      ratio = box_h/(box_w + 0.01)
-
-                      if ((ratio < 0.8) and (box_h>20) and (box_w>20)):
-                          tmp_car_boxes.append(box)
-                          print(box, ', confidence: ', scores[idx], 'ratio:', ratio)
-
-                      else:
-                          print('wrong ratio or wrong size, ', box, ', confidence: ', scores[idx], 'ratio:', ratio)
+        """""
+        bboxes: [x_min, y_min, x_max, y_max, probability, cls_id] format coordinates.
+        --->    [y_min, x_min, y_max, x_max] [] []
+        """""
+        i = [1, 0, 3, 2] #permutation order
+        dim = image.shape[0:2]
+        # boxes = tboxes[:, i]
+        # boxes[:,[0,2]] = boxes[:,[0,2]]/dim[0]
+        # boxes[:,[1,3]] = boxes[:,[1,3]]/dim[1]
 
 
+        boxes = []
+        classes = []
+        scores = []
+        for box in bboxes:
+            tbox = [box[1]/dim[0], box[0]/dim[1], box[3]/dim[0], box[2]/dim[1]]
+            tclass = int(box[5])
+            tscore = box[4]
+            boxes.append(tbox)
+            classes.append(tclass)
+            scores.append(tscore)
 
-                  self.car_boxes = tmp_car_boxes
+        # boxes = np.squeeze(boxes)
+        # classes = np.squeeze(classes)
+        # scores = np.squeeze(scores)
+
+        #cls = classes.tolist()
+        cls = classes
+
+        # Filter low confidence objects
+        idx_vec = [i for i, v in enumerate(cls) if (scores[i] > 0.3)]
+
+        if len(idx_vec) == 0:
+            print('no detection!')
+            self.car_boxes = []
+        else:
+            tmp_car_boxes = []
+            for idx in idx_vec:
+                dim = image.shape[0:2]
+                box = self.box_normal_to_pixel(boxes[idx], dim)
+                box_h = box[2] - box[0]
+                box_w = box[3] - box[1]
+                ratio = box_h / (box_w + 0.01)
+
+#                if ((ratio < 0.8) and (box_h > 20) and (box_w > 20)):
+                tmp_car_boxes.append(box)
+                print(box, ', confidence: ', scores[idx], 'ratio:', ratio)
+
+#                else:
+#                    print('wrong ratio or wrong size, ', box, ', confidence: ', scores[idx], 'ratio:', ratio)
+
+            self.car_boxes = tmp_car_boxes
 
         return self.car_boxes
+
 
 if __name__ == '__main__':
         # Test the performance of the detector

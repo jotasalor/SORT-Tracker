@@ -1,8 +1,7 @@
-
 """
-SCRIPT Detection & tracking
+SCRIPT Video Detection & Tracking
 Jorge Sánchez-Alor Expósito
-Based on code from @author: kyleguan
+Based on code from @author: Kyle Guan
 """
 
 import time
@@ -103,97 +102,97 @@ def pipeline(img):
     img_dim = (img.shape[1], img.shape[0])
     z_box = det.get_localization(img) # measurement
 
-    if debug:
-       print('Frame:', frame_count)
-       
-    x_box =[]
-    if debug: 
-        for i in range(len(z_box)):
-           img1= helpers.draw_box_label(img, z_box[i], box_color=(255, 0, 0))
-           plt.imshow(img1)
-        plt.show()
-    
-    if len(tracker_list) > 0:
-        for trk in tracker_list:
-            x_box.append(trk.box)
-    
-    
-    matched, unmatched_dets, unmatched_trks \
-    = assign_detections_to_trackers(x_box, z_box, iou_thrd = 0.3)  
-    if debug:
-         print('Detection: ', z_box)
-         print('x_box: ', x_box)
-         print('matched:', matched)
-         print('unmatched_det:', unmatched_dets)
-         print('unmatched_trks:', unmatched_trks)
-    
-         
-    # Deal with matched detections     
-    if matched.size >0:
-        for trk_idx, det_idx in matched:
-            z = z_box[det_idx]
-            z = np.expand_dims(z, axis=0).T
-            tmp_trk= tracker_list[trk_idx]
-            tmp_trk.kalman_filter(z)
-            xx = tmp_trk.x_state.T[0].tolist()
-            xx =[xx[0], xx[2], xx[4], xx[6]]
-            x_box[trk_idx] = xx
-            tmp_trk.box =xx
-            tmp_trk.hits += 1
-            tmp_trk.no_losses = 0
-    
-    # Deal with unmatched detections      
-    if len(unmatched_dets)>0:
-        for idx in unmatched_dets:
-            z = z_box[idx]
-            z = np.expand_dims(z, axis=0).T
-            tmp_trk = tracker.Tracker() # Create a new tracker
-            x = np.array([[z[0], 0, z[1], 0, z[2], 0, z[3], 0]]).T
-            tmp_trk.x_state = x
-            tmp_trk.predict_only()
-            xx = tmp_trk.x_state
-            xx = xx.T[0].tolist()
-            xx =[xx[0], xx[2], xx[4], xx[6]]
-            tmp_trk.box = xx
-            tmp_trk.id = track_id_list.popleft() # assign an ID for the tracker
-            tracker_list.append(tmp_trk)
-            x_box.append(xx)
-    
-    # Deal with unmatched tracks       
-    if len(unmatched_trks)>0:
-        for trk_idx in unmatched_trks:
-            tmp_trk = tracker_list[trk_idx]
-            tmp_trk.no_losses += 1
-            tmp_trk.predict_only()
-            xx = tmp_trk.x_state
-            xx = xx.T[0].tolist()
-            xx =[xx[0], xx[2], xx[4], xx[6]]
-            tmp_trk.box =xx
-            x_box[trk_idx] = xx
-                   
-       
-    # The list of tracks to be annotated  
-    good_tracker_list =[]
-    for trk in tracker_list:
-        if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
-             good_tracker_list.append(trk)
-             x_cv2 = trk.box
-             if debug:
-                 print('updated box: ', x_cv2)
-                 print()
-             img= helpers.draw_box_label(img, x_cv2, helpers.trk_id_to_color(trk.id)) # Draw the bounding boxes on the
-                                             # images
-    # Book keeping
-    deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)  
-    
-    for trk in deleted_tracks:
-            track_id_list.append(trk.id)
-    
-    tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
-    
-    if debug:
-       print('Ending tracker_list: ',len(tracker_list))
-       print('Ending good tracker_list: ',len(good_tracker_list))
+    # if debug:
+    #    print('Frame:', frame_count)
+    #
+    # x_box =[]
+    # if debug:
+    #     for i in range(len(z_box)):
+    #        img1= helpers.draw_box_label(img, z_box[i], box_color=(255, 0, 0))
+    #        plt.imshow(img1)
+    #     plt.show()
+    #
+    # if len(tracker_list) > 0:
+    #     for trk in tracker_list:
+    #         x_box.append(trk.box)
+    #
+    #
+    # matched, unmatched_dets, unmatched_trks \
+    # = assign_detections_to_trackers(x_box, z_box, iou_thrd = 0.3)
+    # if debug:
+    #      print('Detection: ', z_box)
+    #      print('x_box: ', x_box)
+    #      print('matched:', matched)
+    #      print('unmatched_det:', unmatched_dets)
+    #      print('unmatched_trks:', unmatched_trks)
+    #
+    #
+    # # Deal with matched detections
+    # if matched.size >0:
+    #     for trk_idx, det_idx in matched:
+    #         z = z_box[det_idx]
+    #         z = np.expand_dims(z, axis=0).T
+    #         tmp_trk= tracker_list[trk_idx]
+    #         tmp_trk.kalman_filter(z)
+    #         xx = tmp_trk.x_state.T[0].tolist()
+    #         xx =[xx[0], xx[2], xx[4], xx[6]]
+    #         x_box[trk_idx] = xx
+    #         tmp_trk.box =xx
+    #         tmp_trk.hits += 1
+    #         tmp_trk.no_losses = 0
+    #
+    # # Deal with unmatched detections
+    # if len(unmatched_dets)>0:
+    #     for idx in unmatched_dets:
+    #         z = z_box[idx]
+    #         z = np.expand_dims(z, axis=0).T
+    #         tmp_trk = tracker.Tracker() # Create a new tracker
+    #         x = np.array([[z[0], 0, z[1], 0, z[2], 0, z[3], 0]]).T
+    #         tmp_trk.x_state = x
+    #         tmp_trk.predict_only()
+    #         xx = tmp_trk.x_state
+    #         xx = xx.T[0].tolist()
+    #         xx =[xx[0], xx[2], xx[4], xx[6]]
+    #         tmp_trk.box = xx
+    #         tmp_trk.id = track_id_list.popleft() # assign an ID for the tracker
+    #         tracker_list.append(tmp_trk)
+    #         x_box.append(xx)
+    #
+    # # Deal with unmatched tracks
+    # if len(unmatched_trks)>0:
+    #     for trk_idx in unmatched_trks:
+    #         tmp_trk = tracker_list[trk_idx]
+    #         tmp_trk.no_losses += 1
+    #         tmp_trk.predict_only()
+    #         xx = tmp_trk.x_state
+    #         xx = xx.T[0].tolist()
+    #         xx =[xx[0], xx[2], xx[4], xx[6]]
+    #         tmp_trk.box =xx
+    #         x_box[trk_idx] = xx
+    #
+    #
+    # # The list of tracks to be annotated
+    # good_tracker_list =[]
+    # for trk in tracker_list:
+    #     if ((trk.hits >= min_hits) and (trk.no_losses <=max_age)):
+    #          good_tracker_list.append(trk)
+    #          x_cv2 = trk.box
+    #          if debug:
+    #              print('updated box: ', x_cv2)
+    #              print()
+    #          img= helpers.draw_box_label(img, x_cv2, helpers.trk_id_to_color(trk.id)) # Draw the bounding boxes on the
+    #                                          # images
+    # # Book keeping
+    # deleted_tracks = filter(lambda x: x.no_losses >max_age, tracker_list)
+    #
+    # for trk in deleted_tracks:
+    #         track_id_list.append(trk.id)
+    #
+    # tracker_list = [x for x in tracker_list if x.no_losses<=max_age]
+    #
+    # if debug:
+    #    print('Ending tracker_list: ',len(tracker_list))
+    #    print('Ending good tracker_list: ',len(good_tracker_list))
 
 
     return img

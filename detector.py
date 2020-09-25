@@ -124,8 +124,8 @@ class CarDetector(object):
                 tmp_car_boxes.append(box)
                 print(box, ', confidence: ', scores[idx], 'ratio:', ratio)
 
-#                else:
-#                    print('wrong ratio or wrong size, ', box, ', confidence: ', scores[idx], 'ratio:', ratio)
+ #               else:
+ #                  print('wrong ratio or wrong size, ', box, ', confidence: ', scores[idx], 'ratio:', ratio)
 
             self.car_boxes = tmp_car_boxes
 

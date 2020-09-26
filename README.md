@@ -1,5 +1,5 @@
 # SORT-Tracker
 
-Programa para la detección y el rastreo empleando SORT
+Scripts para la detección, rastreo y evaluación empleando SORT
 
 Basado en el código de Kyle Guan
